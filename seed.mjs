@@ -20,43 +20,55 @@ const patients = [
 const doctorIds = {};
 const patientIds = {};
 
+const { data: { users } } = await supabase.auth.admin.listUsers();
+
 for (const doctor of doctors) {
-  const { data, error } = await supabase.auth.admin.createUser({
-    email: doctor.email,
-    password: doctor.password,
-    email_confirm: true,
-  });
-  if (error) { console.error("create user", doctor.email, error.message); continue; }
+  let user = users.find(u => u.email === doctor.email);
+  
+  if (!user) {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: doctor.email,
+      password: doctor.password,
+      email_confirm: true,
+    });
+    if (error) { console.error("create user", doctor.email, error.message); continue; }
+    user = data.user;
+  }
 
-  doctorIds[doctor.email] = data.user.id;
+  doctorIds[doctor.email] = user.id;
 
-  const { error: e } = await supabase.from("doctors").insert({
-    id: data.user.id,
+  const { error: e } = await supabase.from("doctors").upsert({
+    id: user.id,
     name: doctor.name,
     email: doctor.email,
     specialty: doctor.specialty,
   });
-  if (e) console.error("insert doctor", doctor.email, e.message);
-  else console.log("created", doctor.email);
+  if (e) console.error("upsert doctor", doctor.email, e.message);
+  else console.log("synced", doctor.email);
 }
 
 for (const patient of patients) {
-  const { data, error } = await supabase.auth.admin.createUser({
-    email: patient.email,
-    password: patient.password,
-    email_confirm: true,
-  });
-  if (error) { console.error("create user", patient.email, error.message); continue; }
+  let user = users.find(u => u.email === patient.email);
 
-  patientIds[patient.email] = data.user.id;
+  if (!user) {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: patient.email,
+      password: patient.password,
+      email_confirm: true,
+    });
+    if (error) { console.error("create user", patient.email, error.message); continue; }
+    user = data.user;
+  }
 
-  const { error: e } = await supabase.from("patients").insert({
-    id: data.user.id,
+  patientIds[patient.email] = user.id;
+
+  const { error: e } = await supabase.from("patients").upsert({
+    id: user.id,
     name: patient.name,
     email: patient.email,
   });
-  if (e) console.error("insert patient", patient.email, e.message);
-  else console.log("created", patient.email);
+  if (e) console.error("upsert patient", patient.email, e.message);
+  else console.log("synced", patient.email);
 }
 
 const d1 = doctorIds["doctor1@test.com"];

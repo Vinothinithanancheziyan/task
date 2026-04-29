@@ -16,6 +16,7 @@ type Slot = {
   start_time: string;
   end_time: string;
   is_booked: boolean;
+  appointments: { patients: { name: string } }[];
 };
 
 type Appointment = {
@@ -52,35 +53,24 @@ export default function DoctorDashboard() {
         return;
       }
 
-      const { data: doctorData } = await supabase
-        .from("doctors")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+      async function fetchData() {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch("/api/doctor/dashboard", {
+          headers: {
+            "Authorization": `Bearer ${session?.access_token}`
+          }
+        });
+        const data = await res.json();
 
-      if (!doctorData) {
-        router.push("/doctor/login");
-        return;
+        if (res.ok) {
+          setDoctor(data.doctor);
+          setSlots(data.slots || []);
+          setAppointments(data.appointments || []);
+        }
+        setLoading(false);
       }
 
-      setDoctor(doctorData);
-
-      const { data: slotData } = await supabase
-        .from("slots")
-        .select("*")
-        .eq("doctor_id", user.id)
-        .order("start_time");
-
-      setSlots(slotData ?? []);
-
-      const { data: apptData } = await supabase
-        .from("appointments")
-        .select("id, status, created_at, patients(name), slots(start_time, end_time)")
-        .eq("doctor_id", user.id)
-        .order("created_at", { ascending: false });
-
-      setAppointments((apptData as Appointment[]) ?? []);
-      setLoading(false);
+      fetchData();
     }
 
     load();
@@ -91,9 +81,13 @@ export default function DoctorDashboard() {
     action: "done" | "cancel"
   ) {
     setActionMsg("");
+    const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch("/api/appointments/cancel", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session?.access_token}`
+      },
       body: JSON.stringify({ appointmentId, action }),
     });
     const data = await res.json();
@@ -157,6 +151,7 @@ export default function DoctorDashboard() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Date & Time</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Patient</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -178,6 +173,9 @@ export default function DoctorDashboard() {
                         >
                           {slot.is_booked ? "Booked" : "Available"}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {slot.appointments?.[0]?.patients?.name || "-"}
                       </td>
                     </tr>
                   ))}

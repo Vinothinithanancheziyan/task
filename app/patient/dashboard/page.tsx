@@ -72,9 +72,14 @@ export default function PatientDashboard() {
         .from("slots")
         .select("id, start_time, end_time, doctors(id, name, specialty)")
         .eq("is_booked", false)
+        .gte("start_time", new Date().toISOString())
         .order("start_time");
 
-      setAvailableSlots((slotsData as AvailableSlot[]) ?? []);
+      const formattedSlots = (slotsData as any[])?.map(slot => ({
+        ...slot,
+        doctors: Array.isArray(slot.doctors) ? slot.doctors[0] : slot.doctors
+      }));
+      setAvailableSlots(formattedSlots || []);
 
       const { data: apptData } = await supabase
         .from("appointments")
@@ -84,7 +89,12 @@ export default function PatientDashboard() {
         .eq("patient_id", user.id)
         .order("created_at", { ascending: false });
 
-      setMyAppointments((apptData as MyAppointment[]) ?? []);
+      const formattedAppts = (apptData as any[])?.map(appt => ({
+        ...appt,
+        slots: Array.isArray(appt.slots) ? appt.slots[0] : appt.slots,
+        doctors: Array.isArray(appt.doctors) ? appt.doctors[0] : appt.doctors
+      }));
+      setMyAppointments(formattedAppts || []);
       setLoading(false);
     }
 
@@ -95,9 +105,13 @@ export default function PatientDashboard() {
     setActionMsg("");
     setBookingSlotId(slotId);
 
+    const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch("/api/appointments/book", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session?.access_token}`
+      },
       body: JSON.stringify({ slotId, doctorId }),
     });
     const data = await res.json();
@@ -114,9 +128,13 @@ export default function PatientDashboard() {
 
   async function handleCancel(appointmentId: string) {
     setActionMsg("");
+    const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch("/api/appointments/cancel", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session?.access_token}`
+      },
       body: JSON.stringify({ appointmentId, action: "cancel" }),
     });
     const data = await res.json();
@@ -256,7 +274,9 @@ export default function PatientDashboard() {
                         {appt.status === "active" && (
                           <button
                             onClick={() => handleCancel(appt.id)}
-                            className="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700"
+                            disabled={new Date(appt.slots?.start_time).getTime() - Date.now() < 60 * 60 * 1000}
+                            className="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={new Date(appt.slots?.start_time).getTime() - Date.now() < 60 * 60 * 1000 ? "Cannot cancel less than 1 hour before start" : ""}
                           >
                             Cancel
                           </button>
