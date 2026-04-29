@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import bcrypt from "bcryptjs";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -103,6 +104,19 @@ const { error: apptError } = await supabase.from("appointments").insert({
   status: "active",
 });
 if (apptError) console.error("insert appointment", apptError.message);
-else console.log("created pre-existing appointment");
+console.log("created pre-existing appointment");
+
+const adminEmail = "admin@test.com";
+const adminPassword = "admin123";
+const salt = await bcrypt.genSalt(10);
+const hashedAdminPassword = await bcrypt.hash(adminPassword, salt);
+
+const { error: adminError } = await supabase.from("system_admins").upsert({
+  email: adminEmail,
+  password: hashedAdminPassword,
+}, { onConflict: 'email' });
+
+if (adminError) console.error("upsert admin", adminError.message);
+else console.log("synced admin");
 
 console.log("done");

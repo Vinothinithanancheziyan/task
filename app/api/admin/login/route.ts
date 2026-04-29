@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,16 +13,37 @@ export async function POST(req: NextRequest) {
       .from("system_admins")
       .select("*")
       .eq("email", email)
-      .eq("password", password)
       .maybeSingle();
 
     if (error || !admin) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // In a real app, we would issue a JWT here. 
-    // For this implementation, we return success and the client handles a basic session.
-    return NextResponse.json({ message: "Login successful", admin: { email: admin.email } });
+    const isMatch = await bcrypt.compare(password, admin.password);
+    if (!isMatch) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    const token = jwt.sign(
+      { email: admin.email, role: "admin" },
+      JWT_SECRET,
+      { expiresIn: "8h" }
+    );
+
+    const response = NextResponse.json({ 
+      message: "Login successful", 
+      admin: { email: admin.email } 
+    });
+
+    response.cookies.set("admin_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 8 * 60 * 60, // 8 hours
+      path: "/",
+    });
+
+    return response;
   } catch (err) {
     console.error("Admin login error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

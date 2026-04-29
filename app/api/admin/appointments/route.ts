@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import jwt from "jsonwebtoken";
 
-export async function GET(_req: NextRequest) {
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret";
+
+export async function GET(req: NextRequest) {
   try {
-    // In a real app, we would verify the admin session/token here.
+    const token = req.cookies.get("admin_session")?.value;
+
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { role: string };
+      if (decoded.role !== "admin") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } catch (err) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
     
     const { data: appointments, error } = await supabaseAdmin
       .from("appointments")

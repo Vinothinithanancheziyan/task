@@ -23,13 +23,16 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Update slot and create appointment (Atomic update using admin client)
-    const { error: slotUpdateError } = await supabaseAdmin
+    // We add .eq("is_booked", false) to ensure we only book if it's still available (Optimistic Concurrency)
+    const { data: updatedSlot, error: slotUpdateError } = await supabaseAdmin
       .from("slots")
       .update({ is_booked: true })
-      .eq("id", slotId);
+      .eq("id", slotId)
+      .eq("is_booked", false)
+      .select();
 
-    if (slotUpdateError) {
-      return NextResponse.json({ error: "Failed to update slot" }, { status: 500 });
+    if (slotUpdateError || !updatedSlot || updatedSlot.length === 0) {
+      return NextResponse.json({ error: "Slot is no longer available" }, { status: 409 });
     }
 
     const { error: insertError } = await supabaseAdmin.from("appointments").insert({
@@ -40,6 +43,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (insertError) {
+      console.error("Appointment insertion failed, rolling back slot update:", insertError);
       // Rollback slot update
       await supabaseAdmin.from("slots").update({ is_booked: false }).eq("id", slotId);
       return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 });
